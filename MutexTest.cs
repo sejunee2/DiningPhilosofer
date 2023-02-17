@@ -8,11 +8,13 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Timers;
+using System.Diagnostics;
 
 namespace MutexTest
 {/// <summary>
 /// P1 LightPink
-/// P2 LightYellow
+/// P2 Yellow
 /// P3 Tomato
 /// P4 LightBlue
 /// P5 Silver
@@ -34,7 +36,16 @@ namespace MutexTest
             static Mutex gM4 = new Mutex(false);
             static Mutex gM5 = new Mutex(false);
             static Mutex[] gFork = new Mutex[5];
-            
+
+            private object lockObject = new object();
+
+            static bool iF1 = false;
+            static bool iF2 = false;
+            static bool iF3 = false;
+            static bool iF4 = false;
+            static bool iF5 = false;
+            static bool[] bFork = new bool[5];
+
             public Table()
             {
                 gFork[0] = gM1;
@@ -42,18 +53,60 @@ namespace MutexTest
                 gFork[2] = gM3;
                 gFork[3] = gM4;
                 gFork[4] = gM5;
+
+                bFork[0] = iF1;
+                bFork[1] = iF2;
+                bFork[2] = iF3;
+                bFork[3] = iF4;
+                bFork[4] = iF5;
             }
-            public void GetForks(int threadID)
+            public bool GetForks(int threadID)
             {
                 Mutex[] IFork = new Mutex[2];
                 IFork[0] = gFork[threadID];
                 IFork[1] = gFork[(threadID + 1) % 5];
-                WaitHandle.WaitAll(IFork);
+                Stopwatch sw = new Stopwatch();
+                sw.Start();
+                bool result = WaitHandle.WaitAll(IFork,1);
+                Console.WriteLine("Time:" + sw.ElapsedMilliseconds.ToString());
+                if (result != true)
+                {
+                    Console.WriteLine("false");
+                }
+                return result;
             }
-            void DropForks(int threadID)
+            public void DropForks(int threadID)
             {
                 gFork[threadID].ReleaseMutex();
                 gFork[(threadID + 1) % 5].ReleaseMutex();
+            }
+
+            public bool GetBoolForks(int threadID) 
+            {
+                //if (bFork[1] == true && bFork[2] == true && bFork[3] == true && bFork[4] == true && bFork[0] == true)
+                //{
+                //    Console.WriteLine("Warnning");
+                //}
+                //Wait
+                lock (lockObject)
+                {
+                    if (bFork[threadID] == false && bFork[(threadID + 1) % 5] == false)
+                    {
+                        bFork[threadID] = bFork[(threadID + 1) % 5] = true;
+                        return true;
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                }
+                //Release
+                
+            }
+            public void DropBoolForks(int threadID) 
+            {
+                bFork[threadID] = false;
+                bFork[(threadID + 1) % 5] = false;
             }
 
             public class Philosopher
@@ -65,20 +118,34 @@ namespace MutexTest
                 public Color color;
                 private int threadID;
                 private int cnt = 0;
-                private int waitingTime = 0;
                 private Table aTable;
+                
 
                 public Philosopher(int threadId, Table table)
                 {
                     this.threadID = threadId;
                     this.aTable = table;
                 }
+                                
                 public void PhilosopherWaiting()
                 {
-                    for (int i=0; ; i++)
+                    if (circle.InvokeRequired)
                     {
-
+                        circle.Invoke(new MethodInvoker(delegate { circle.BackColor = System.Drawing.Color.White; }));
                     }
+                    else
+                        circle.BackColor = System.Drawing.Color.White;
+
+                    Thread.Sleep(300);
+
+                    if (circle.InvokeRequired)
+                    {
+                        circle.Invoke(new MethodInvoker(delegate { circle.BackColor = color; }));
+                    }
+                    else
+                        circle.BackColor = color;
+
+                    Thread.Sleep(300);
                 }
                 private void CircleEat()
                 {
@@ -149,19 +216,27 @@ namespace MutexTest
                 {
                     for (int i = 0; ; i++)
                     {
-                        int iSleep = rand.Next(1000,3000);
-                        PhilosopherWaiting();
-                        aTable.GetForks(threadID);
+                        int iSleep = rand.Next(3000, 5000);
+
+                        for (int n = 0; ; n++)
+                        {
+                            if (aTable.GetBoolForks(threadID) == true)
+                            {
+                                break;
+                            }
+                            else
+                            {
+                                PhilosopherWaiting();
+                            }
+                        }
                         CircleEat();
-
                         Thread.Sleep(iSleep);
+                                                
+                        CircleThink();                      
+                        aTable.DropBoolForks(threadID);                        
+                        Thread.Sleep(601);
 
-                        CircleThink();
-                        aTable.DropForks(threadID);
-
-                        Thread.Sleep(1);
-
-                        if (cnt==10)
+                        if (cnt == 10)
                         {
                             //return;
                         }
@@ -193,7 +268,7 @@ namespace MutexTest
                     IPhil[loopctr].circle = form.circle2;
                     IPhil[loopctr].buttonL = form.button2;
                     IPhil[loopctr].buttonR = form.button3;
-                    IPhil[loopctr].color = System.Drawing.Color.LightYellow;
+                    IPhil[loopctr].color = System.Drawing.Color.Yellow;
                     IPhil[loopctr].eatCount = Eatcount2;
                 }
                 if (loopctr == 2)
@@ -224,10 +299,9 @@ namespace MutexTest
                 IThread[loopctr] = new Thread(new ThreadStart(IPhil[loopctr].Philosophize));
                 IThread[loopctr].Name = "Philosopher " + loopctr;
                 IThread[loopctr].Start();
-
+                
             }
             start.Text = "End";
         }
-
     }
 }
